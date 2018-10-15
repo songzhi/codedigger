@@ -1,11 +1,12 @@
+/// 解析文件
 use std::fmt::{Display, Error, Formatter};
 use std::fs::File;
 use std::io;
 use std::io::BufReader;
 use std::io::prelude::*;
 
-#[derive(Clone)]
-enum CommentToken {
+#[derive(Clone, Debug)]
+pub enum CommentToken {
     Common(String),
     MultiLine(String, String),
 }
@@ -30,7 +31,7 @@ pub trait Parser {
 }
 
 impl CommonParser {
-    fn new(path: &str, comment_tokens: Vec<CommentToken>) -> Self {
+    pub fn new(path: &str, comment_tokens: Vec<CommentToken>) -> Self {
         Self {
             path: path.to_string(),
             comment_tokens,
@@ -64,6 +65,8 @@ impl Parser for CommonParser {
         Ok(stats)
     }
     fn parse_line(&self, line: &str, stats: &mut CodeStats, being_in_multiline_token: &mut Option<CommentToken>) {
+        let line = line.trim();
+        let mut flag = false;
         match being_in_multiline_token {
             Some(being_in_token) => {
                 for token in self.comment_tokens.iter() {
@@ -71,8 +74,8 @@ impl Parser for CommonParser {
                         if line.ends_with(e.as_str()) {
                             if let CommentToken::MultiLine(s, _e) = being_in_token {
                                 if s == _s {
-                                    stats.comment += 1;
-                                    return;
+                                    flag = true;
+                                    break;
                                 }
                             }
                         }
@@ -81,7 +84,7 @@ impl Parser for CommonParser {
                 stats.comment += 1;
             }
             None => {
-                if line.trim().is_empty() {
+                if line.is_empty() {
                     stats.blank += 1;
                     return;
                 }
@@ -105,6 +108,9 @@ impl Parser for CommonParser {
                 stats.code += 1;
             }
         }
+        if flag {
+            *being_in_multiline_token = None;
+        }
     }
 }
 
@@ -114,7 +120,7 @@ mod tests {
 
     #[test]
     fn parse() {
-        let path = "G:\\code\\suggest.js";
+        let path = "G:\\C_C++code\\eng.cpp";
         let comment_tokens = vec![CommentToken::Common("//".to_string()), CommentToken::MultiLine("/*".to_string(), "*/".to_string())];
         let parser = CommonParser::new(path, comment_tokens);
         let stats = parser.parse().unwrap();

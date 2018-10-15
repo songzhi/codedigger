@@ -5,3 +5,4 @@ authors = ["lsongzhi <lsongzhi@163.com>"]
 
 [dependencies]
 threadpool = "1.7.1"
+serde_json = "1.0.32"
