@@ -1,13 +1,17 @@
 /// 调用parser解析根目录文件树的所有文件
 extern crate threadpool;
 
+use std::fs;
+use std::io;
+use std::str::*;
+use std::sync::mpsc::{channel, Receiver, Sender};
+
 use cache;
 use config;
 use parser;
+use parser::Parser;
+
 use self::threadpool::ThreadPool;
-use std::fs;
-use std::io;
-use std::sync::mpsc::{channel, Receiver, Sender};
 
 pub struct Scheduler {
     pub init_path: String,
@@ -19,7 +23,7 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
-    pub fn new(path: &str, threadpool: ThreadPool, config: config::Config, cache: cache_manager::CacheManager) -> Self {
+    pub fn new(path: &str, threadpool: ThreadPool, config: config::Config, cache_manager: cache::CacheManager) -> Self {
         Self {
             init_path: path.to_string(),
             results: vec![],
@@ -52,13 +56,14 @@ impl Scheduler {
                         if file_type.is_dir() {
                             self.schedule(entry.path().to_str().unwrap(), tx.clone())
                         } else if file_type.is_file() {
-                            let path = entry.path().to_str().unwrap();
-                            if let Some(stats) = self.cache_manager.get_cache(path) {
+                            let tx = tx.clone();
+                            let path = entry.path();
+                            if let Some(stats) = self.cache_manager.get_cache(path.to_str().unwrap()) {
                                 tx.send(Ok(stats));
                             } else {
-                                if let Some(tokens) = self.config.get_comment_tokens(path) {
-                                    self.tp.execute(move || {
-                                        tx.send(parser::Parser::new(path, tokens).parse())
+                                if let Some(tokens) = self.config.get_comment_tokens(path.to_str().unwrap()) {
+                                    self.threadpool.execute(move || {
+                                        tx.send(parser::CommonParser::new(path.to_str().unwrap(), tokens).parse())
                                             .expect("parse failed")
                                     })
                                 }

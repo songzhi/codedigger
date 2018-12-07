@@ -5,16 +5,12 @@ use std::io;
 use std::io::BufReader;
 use std::io::prelude::*;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CommentToken {
     Common(String),
     MultiLine(String, String),
 }
 
-pub struct CommonParser {
-    path: String,
-    comment_tokens: Vec<CommentToken>,
-}
 
 #[derive(Clone, Debug)]
 pub struct CodeStats {
@@ -25,19 +21,23 @@ pub struct CodeStats {
     ext: String
 }
 
-pub trait Parser {
-    fn parse(self) -> io::Result<CodeStats>;
-    fn parse_line(&self, line: &str, stats: &mut CodeStats, being_in_multiline_token: &mut Option<CommentToken>);
-}
-
-impl CommonParser {
-    pub fn new(path: &str, comment_tokens: Vec<CommentToken>) -> Self {
+impl CodeStats {
+    pub fn new(path: &str) -> Self {
         Self {
+            code: 0u64,
+            blank: 0u64,
+            comment: 0u64,
             path: path.to_string(),
-            comment_tokens,
+            ext: String::from(path.rsplit(".").nth(0).unwrap()),
         }
     }
 }
+
+pub trait Parser {
+    fn parse(mut self) -> io::Result<CodeStats>;
+    fn parse_line(&mut self, line: &str);
+}
+
 
 impl Display for CodeStats {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
@@ -45,71 +45,98 @@ impl Display for CodeStats {
     }
 }
 
+
+enum ParserState {
+    Normal,
+    InMultilineComment,
+}
+
+struct ParserContext {
+    stats: CodeStats,
+    comment_tokens: Vec<CommentToken>,
+    state: ParserState,
+    multiline_token: Option<CommentToken>,
+}
+
+impl ParserContext {
+    fn new(path: &str, comment_tokens: Vec<CommentToken>) -> Self {
+        Self {
+            stats: CodeStats::new(path),
+            comment_tokens,
+            state: ParserState::Normal,
+            multiline_token: None,
+        }
+    }
+}
+
+pub struct CommonParser {
+    context: ParserContext
+}
+
+impl CommonParser {
+    pub fn new(path: &str, comment_tokens: Vec<CommentToken>) -> Self {
+        Self {
+            context: ParserContext::new(path, comment_tokens)
+        }
+    }
+
+    pub fn parse_line_normal(&mut self, line: &str) {
+        let stats = &mut self.context.stats;
+        if line.is_empty() {
+            stats.blank += 1;
+            return;
+        }
+        for token in self.context.comment_tokens.iter() {
+            match token {
+                CommentToken::Common(t) => {
+                    if line.starts_with(t.as_str()) {
+                        stats.comment += 1;
+                        return;
+                    }
+                }
+                CommentToken::MultiLine(s, _e) => {
+                    if line.starts_with(s.as_str()) {
+                        stats.comment += 1;
+                        self.context.state = ParserState::InMultilineComment;
+                        self.context.multiline_token = Some(token.clone());
+                        return;
+                    }
+                }
+            }
+        }
+        stats.code += 1;
+    }
+    pub fn parse_line_in_multiline_comment(&mut self, line: &str) {
+        let stats = &mut self.context.stats;
+        for token in self.context.comment_tokens.iter() {
+            if let CommentToken::MultiLine(_s, e) = token {
+                if line.ends_with(e.as_str()) {
+                    if token == self.context.multiline_token.as_ref().unwrap() {
+                        self.context.state = ParserState::Normal;
+                        break;
+                    }
+                }
+            }
+        }
+        stats.comment += 1;
+    }
+}
+
 impl Parser for CommonParser {
-    fn parse(self) -> io::Result<CodeStats> {
-        let file = File::open(self.path.as_str())?;
+    fn parse(mut self) -> io::Result<CodeStats> {
+        let file = File::open(self.context.stats.path.as_str())?;
         let reader = BufReader::new(file);
-        let mut stats = CodeStats {
-            code: 0u64,
-            blank: 0u64,
-            comment: 0u64,
-            path: self.path.clone(),
-            ext: String::from(self.path.rsplit(".").nth(0).unwrap())
-        };
-        let mut being_in_multiline_token: Option<CommentToken> = None;
         for line in reader.lines() {
             if let Ok(s) = line {
-                self.parse_line(s.as_str(), &mut stats, &mut being_in_multiline_token);
+                self.parse_line(s.as_str().trim());
             }
         }
-        Ok(stats)
+        Ok(self.context.stats)
     }
-    fn parse_line(&self, line: &str, stats: &mut CodeStats, being_in_multiline_token: &mut Option<CommentToken>) {
-        let line = line.trim();
-        let mut flag = false;
-        match being_in_multiline_token {
-            Some(being_in_token) => {
-                for token in self.comment_tokens.iter() {
-                    if let CommentToken::MultiLine(_s, e) = token {
-                        if line.ends_with(e.as_str()) {
-                            if let CommentToken::MultiLine(s, _e) = being_in_token {
-                                if s == _s {
-                                    flag = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-                stats.comment += 1;
-            }
-            None => {
-                if line.is_empty() {
-                    stats.blank += 1;
-                    return;
-                }
-                for token in self.comment_tokens.iter() {
-                    match token {
-                        CommentToken::Common(s) => {
-                            if line.starts_with(s.as_str()) {
-                                stats.comment += 1;
-                                return;
-                            }
-                        }
-                        CommentToken::MultiLine(s, _e) => {
-                            if line.starts_with(s.as_str()) {
-                                stats.comment += 1;
-                                *being_in_multiline_token = Some((*token).clone());
-                                return;
-                            }
-                        }
-                    }
-                }
-                stats.code += 1;
-            }
-        }
-        if flag {
-            *being_in_multiline_token = None;
+    fn parse_line(&mut self, line: &str) {
+        match self.context.state {
+            ParserState::Normal => self.parse_line_normal(line),
+            ParserState::InMultilineComment => self.parse_line_in_multiline_comment(line)
         }
     }
 }
