@@ -18,7 +18,7 @@ pub struct CodeStats {
     blank: u64,
     comment: u64,
     path: String,
-    ext: String
+    ext: String,
 }
 
 impl CodeStats {
@@ -34,7 +34,7 @@ impl CodeStats {
 }
 
 pub trait Parser {
-    fn parse(mut self) -> io::Result<CodeStats>;
+    fn parse(self) -> io::Result<CodeStats>;
     fn parse_line(&mut self, line: &str);
 }
 

@@ -60,13 +60,11 @@ impl Scheduler {
                             let path = entry.path();
                             if let Some(stats) = self.cache_manager.get_cache(path.to_str().unwrap()) {
                                 tx.send(Ok(stats));
-                            } else {
-                                if let Some(tokens) = self.config.get_comment_tokens(path.to_str().unwrap()) {
-                                    self.threadpool.execute(move || {
-                                        tx.send(parser::CommonParser::new(path.to_str().unwrap(), tokens).parse())
-                                            .expect("parse failed")
-                                    })
-                                }
+                            } else if let Some(tokens) = self.config.get_comment_tokens(path.to_str().unwrap()) {
+                                self.threadpool.execute(move || {
+                                    tx.send(parser::CommonParser::new(path.to_str().unwrap(), tokens).parse())
+                                        .expect("parse failed")
+                                })
                             }
                         }
                     }
