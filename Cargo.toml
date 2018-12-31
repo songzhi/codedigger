@@ -2,7 +2,7 @@
 name = "codedigger"
 version = "0.1.0"
 authors = ["lsongzhi <lsongzhi@163.com>"]
-
+edition = "2018"
 [dependencies]
 threadpool = "1.7.1"
 serde_json = "1.0.32"

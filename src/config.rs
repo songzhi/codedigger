@@ -40,16 +40,16 @@ impl Config {
         for (ext, table) in config {
             let table = table.as_table()?;
             let mut tokens = Vec::new();
-            let common = table.get("common")?.as_array()?;
-            let multi = table.get("multi")?.as_array()?;
+            let common = table.get("line")?.as_array()?;
+            let multi = table.get("block")?.as_array()?;
             for token in common {
                 let token = token.as_str()?;
-                tokens.push(CommentToken::Common(token.to_string()));
+                tokens.push(CommentToken::Line(token.to_string()));
             }
             for pair in multi {
                 let pair = pair.as_array()?;
                 let (token1, token2) = (pair[0].as_str().unwrap(), pair[1].as_str().unwrap());
-                tokens.push(CommentToken::MultiLine(token1.to_string(), token2.to_string()));
+                tokens.push(CommentToken::Block(token1.to_string(), token2.to_string()));
             }
             result_map.insert(ext.clone(), tokens);
         }

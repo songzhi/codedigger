@@ -7,14 +7,13 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 
 use cache;
 use config;
-use parser;
-use parser::Parser;
+use parser::{CodeStats, CommonParser, Parser, ParserState};
 
-use self::threadpool::ThreadPool;
+use self::threadpool::{Builder, ThreadPool};
 
 pub struct Scheduler {
     pub init_path: String,
-    pub results: Vec<parser::CodeStats>,
+    pub results: Vec<CodeStats>,
     pub errors: Vec<io::Error>,
     threadpool: ThreadPool,
     config: config::Config,
@@ -47,7 +46,8 @@ impl Scheduler {
         }
     }
     /// 递归调用方法
-    fn schedule(&self, path: &str, tx: Sender<Result<parser::CodeStats, io::Error>>) -> Result<(), io::Error> {
+    fn schedule(&self, path: &str, tx: Sender<ParserState>) -> Result<(), io::Error> {
+        let path = path.trim();
         let entries = fs::read_dir(path)?;
         for entry in entries {
             let entry = entry?;
@@ -60,9 +60,13 @@ impl Scheduler {
                 if let Some(stats) = self.cache_manager.get_cache(&path) {
                     tx.send(Ok(stats));
                 } else if let Some(tokens) = self.config.get_comment_tokens(&path) {
+                    tx.send(ParserState::Ready(path));
                     self.threadpool.execute(move || {
-                        tx.send(parser::CommonParser::new(&path, tokens).parse())
-                            .expect("parse failed")
+                        let result = CommonParser::new(&path, tokens).parse();
+                        match result {
+                            Ok(stats) => tx.send(ParserState::Complete(stats)),
+                            Err(err) => tx.send(ParserState::Error(path, err))
+                        };
                     })
                 }
             }
