@@ -11,6 +11,27 @@ pub enum CommentToken {
     MultiLine(String, String),
 }
 
+impl CommentToken {
+    pub fn as_common_token(&self) -> Option<&str> {
+        match *self {
+            CommentToken::Common(ref s) => Some(&**s),
+            _ => None
+        }
+    }
+    pub fn as_multiline_tokens(&self) -> Option<(&str, &str)> {
+        match *self {
+            CommentToken::MultiLine(ref s, ref t) => Some((&**s, &**t)),
+            _ => None
+        }
+    }
+    pub fn is_common(&self) -> bool {
+        self.as_common_token().is_some()
+    }
+    pub fn is_multiline(&self) -> bool {
+        self.as_multiline_tokens().is_some()
+    }
+}
+
 
 #[derive(Clone, Debug)]
 pub struct CodeStats {
@@ -46,7 +67,7 @@ impl Display for CodeStats {
 }
 
 
-enum ParserState {
+enum ParserInternalState {
     Normal,
     InMultilineComment,
 }
@@ -54,7 +75,7 @@ enum ParserState {
 struct ParserContext {
     stats: CodeStats,
     comment_tokens: Vec<CommentToken>,
-    state: ParserState,
+    state: ParserInternalState,
     multiline_token: Option<CommentToken>,
 }
 
@@ -63,7 +84,7 @@ impl ParserContext {
         Self {
             stats: CodeStats::new(path),
             comment_tokens,
-            state: ParserState::Normal,
+            state: ParserInternalState::Normal,
             multiline_token: None,
         }
     }
@@ -80,7 +101,7 @@ impl CommonParser {
         }
     }
 
-    pub fn parse_line_normal(&mut self, line: &str) {
+    fn parse_line_normal(&mut self, line: &str) {
         let stats = &mut self.context.stats;
         if line.is_empty() {
             stats.blank += 1;
@@ -95,9 +116,9 @@ impl CommonParser {
                     }
                 }
                 CommentToken::MultiLine(s, _e) => {
-                    if line.starts_with(s.as_str()) {
+                    if line.contains(s.as_str()) {
                         stats.comment += 1;
-                        self.context.state = ParserState::InMultilineComment;
+                        self.context.state = ParserInternalState::InMultilineComment;
                         self.context.multiline_token = Some(token.clone());
                         return;
                     }
@@ -106,13 +127,13 @@ impl CommonParser {
         }
         stats.code += 1;
     }
-    pub fn parse_line_in_multiline_comment(&mut self, line: &str) {
+    fn parse_line_in_multiline_comment(&mut self, line: &str) {
         let stats = &mut self.context.stats;
         for token in self.context.comment_tokens.iter() {
             if let CommentToken::MultiLine(_s, e) = token {
-                if line.ends_with(e.as_str()) {
+                if line.contains(e.as_str()) {
                     if token == self.context.multiline_token.as_ref().unwrap() {
-                        self.context.state = ParserState::Normal;
+                        self.context.state = ParserInternalState::Normal;
                         break;
                     }
                 }
@@ -127,16 +148,14 @@ impl Parser for CommonParser {
         let file = File::open(self.context.stats.path.as_str())?;
         let reader = BufReader::new(file);
         for line in reader.lines() {
-            if let Ok(s) = line {
-                self.parse_line(s.as_str().trim());
-            }
+            self.parse_line(line?.trim());
         }
         Ok(self.context.stats)
     }
     fn parse_line(&mut self, line: &str) {
         match self.context.state {
-            ParserState::Normal => self.parse_line_normal(line),
-            ParserState::InMultilineComment => self.parse_line_in_multiline_comment(line)
+            ParserInternalState::Normal => self.parse_line_normal(line),
+            ParserInternalState::InMultilineComment => self.parse_line_in_multiline_comment(line)
         }
     }
 }
@@ -147,7 +166,7 @@ mod tests {
 
     #[test]
     fn parse() {
-        let path = "G:\\C_C++code\\eng.cpp";
+        let path = "tests/eng.cpp";
         let comment_tokens = vec![CommentToken::Common("//".to_string()), CommentToken::MultiLine("/*".to_string(), "*/".to_string())];
         let parser = CommonParser::new(path, comment_tokens);
         let stats = parser.parse().unwrap();
