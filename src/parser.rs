@@ -6,6 +6,8 @@ use std::{
     io::prelude::*,
 };
 
+use indicatif::{ProgressBar, ProgressStyle};
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CommentToken {
     Line(String),
@@ -103,12 +105,14 @@ impl ParserContext {
 
 pub struct CommonParser {
     context: ParserContext,
+    bar: ProgressBar,
 }
 
 impl CommonParser {
-    pub fn new(path: &str, comment_tokens: Vec<CommentToken>) -> Self {
+    pub fn new(path: &str, comment_tokens: Vec<CommentToken>, bar: ProgressBar) -> Self {
         Self {
             context: ParserContext::new(path, comment_tokens),
+            bar,
         }
     }
 
@@ -127,7 +131,7 @@ impl CommonParser {
                     }
                 }
                 CommentToken::Block(s, _e) => {
-                    if line.contains(s.as_str()) {
+                    if line.starts_with(s.as_str()) {
                         stat.comment += 1;
                         self.context.state = ParserInternalState::InBlockComment;
                         self.context.block_token = Some(token.clone());
@@ -142,7 +146,7 @@ impl CommonParser {
         let stat = &mut self.context.stat;
         for token in self.context.comment_tokens.iter() {
             if let CommentToken::Block(_s, e) = token {
-                if line.contains(e.as_str()) {
+                if line.ends_with(e.as_str()) {
                     if token == self.context.block_token.as_ref().unwrap() {
                         self.context.state = ParserInternalState::Normal;
                         break;
@@ -159,8 +163,11 @@ impl Parser for CommonParser {
         let file = File::open(self.context.stat.path.as_str())?;
         let reader = BufReader::new(file);
         for line in reader.lines() {
-            self.parse_line(line?.trim());
+            let line = line?;
+            self.parse_line(line.trim());
+            self.bar.inc(line.len() as u64);
         }
+        self.bar.finish_and_clear();
         Ok(self.context.stat)
     }
     fn parse_line(&mut self, line: &str) {
@@ -173,17 +180,24 @@ impl Parser for CommonParser {
 
 #[cfg(test)]
 mod tests {
+    use std::time::{Duration, Instant};
+
     use super::*;
 
     #[test]
     fn parse() {
-        let path = "tests/eng.cpp";
+        let begin = Instant::now();
+        let path = "tests/window2.html";
         let comment_tokens = vec![
             CommentToken::Line("//".to_string()),
             CommentToken::Block("/*".to_string(), "*/".to_string()),
+            CommentToken::Block("<!--".to_string(), "-->".to_string()),
         ];
-        let parser = CommonParser::new(path, comment_tokens);
+        let bar = ProgressBar::new(12);
+        let parser = CommonParser::new(path, comment_tokens, bar);
         let stats = parser.parse().unwrap();
-        println!("{:#?}", stats);
+        let end = Instant::now();
+        let used_time = end.duration_since(begin);
+        println!("{:#?} used {} ms", stats, used_time.as_millis());
     }
 }

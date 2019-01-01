@@ -20,7 +20,7 @@ pub struct Config {
 impl Config {
     pub fn new(config_file_name: &str) -> Self {
         let progress_style = ProgressStyle::default_bar()
-            .template("{bar:40.cyan/red} {pos:>7}/{len:7} {msg}")
+            .template("{bar:40.cyan/blue} {pos:>7}/{len:7} {msg}")
             .progress_chars("##-");
         let token_map_file = String::new();
         Self {
