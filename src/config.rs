@@ -3,14 +3,13 @@ extern crate toml;
 
 use std::{
     collections::BTreeMap,
-    error::Error,
     fs::File,
     io::Read,
 };
 
 use super::parser::CommentToken;
 
-use self::indicatif::{ProgressBar, ProgressStyle};
+use self::indicatif::ProgressStyle;
 
 pub struct Config {
     pub progress_style: ProgressStyle,
@@ -30,7 +29,8 @@ impl Config {
         }
     }
     pub fn get_comment_tokens(&self, path: &str) -> Option<Vec<CommentToken>> {
-        unimplemented!()
+        let ext = path.rsplit(".").next()?;
+        self.token_map.get(ext).map(|vec| vec.to_vec())
     }
     pub fn get_token_map(path: &str) -> Option<BTreeMap<String, Vec<CommentToken>>> {
         let mut file = File::open(path).ok()?;
@@ -57,8 +57,10 @@ impl Config {
         }
         Some(result_map)
     }
-    pub fn set_comment_token(&self, filename: &str) -> Result<(), ()> {
-        unimplemented!()
+    pub fn set_comment_token(&mut self, path: &str) {
+        if let Some(mut map) = Self::get_token_map(path) {
+            self.token_map.append(&mut map);
+        };
     }
 }
 

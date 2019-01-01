@@ -5,20 +5,19 @@ use std::{
     collections::BTreeMap,
     fs,
     io,
-    sync::mpsc::{channel, Receiver, Sender},
+    sync::mpsc::{channel, Sender},
 };
 
 use super::cache;
 use super::config;
 use super::parser::{CodeStat, CommonParser, Parser, ParserState};
 
-use self::threadpool::{Builder, ThreadPool};
+use self::threadpool::ThreadPool;
 
 pub struct Scheduler {
     pub init_path: String,
     pub parsers: BTreeMap<String, ParserState>,
-    pub results: Vec<CodeStat>,
-    pub errors: Vec<io::Error>,
+    parser_left_count: u64,
     threadpool: ThreadPool,
     config: config::Config,
     cache_manager: cache::CacheManager,
@@ -29,20 +28,27 @@ impl Scheduler {
         Self {
             init_path: path.to_string(),
             parsers: BTreeMap::new(),
-            results: vec![],
-            errors: vec![],
+            parser_left_count: 0,
             threadpool,
             config,
             cache_manager,
         }
     }
-    pub fn start(&mut self) {
+    pub fn start(mut self) -> Result<BTreeMap<String, ParserState>, io::Error> {
         let (tx, rx) = channel();
-        self.schedule(self.init_path.as_str(), tx.clone());
+        self.schedule(self.init_path.as_str(), tx.clone())?;
         while let Ok((path, state)) = rx.recv() {
             self.parsers.insert(path, state);
-        }
-
+            match state {
+                ParserState::Ready => self.parser_left_count += 1,
+                ParserState::Complete(_) => self.parser_left_count -= 1,
+                _ => {}
+            }
+            if !self.parser_left_count {
+                break
+            }
+        };
+        Ok(self.parsers)
     }
     /// 递归调用方法
     fn schedule(&self, path: &str, tx: Sender<(String, ParserState)>) -> Result<(), io::Error> {
@@ -64,8 +70,8 @@ impl Scheduler {
                     self.threadpool.execute(move || {
                         let result = CommonParser::new(path.as_str(), tokens).parse();
                         match result {
-                            Ok(stats) => tx.send((path, ParserState::Complete(stats))),
-                            Err(err) => tx.send((path, ParserState::Error(err)))
+                            Ok(stats) => tx.send((path, ParserState::Complete(stats))).expect("发送失败"),
+                            Err(err) => tx.send((path, ParserState::Error(err))).expect("发送失败")
                         };
                     })
                 }

@@ -35,11 +35,11 @@ impl CommentToken {
 
 #[derive(Clone, Debug)]
 pub struct CodeStat {
-    code: u64,
-    blank: u64,
-    comment: u64,
-    path: String,
-    ext: String,
+    pub code: u64,
+    pub blank: u64,
+    pub comment: u64,
+    pub path: String,
+    pub ext: String,
 }
 
 impl CodeStat {
