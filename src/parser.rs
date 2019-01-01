@@ -1,9 +1,10 @@
-/// 解析文件
-use std::fmt::{Display, Error, Formatter};
-use std::fs::File;
-use std::io;
-use std::io::BufReader;
-use std::io::prelude::*;
+use std::{
+    fmt::{Display, Error, Formatter},
+    fs::File,
+    io,
+    io::BufReader,
+    io::prelude::*,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CommentToken {
@@ -15,13 +16,13 @@ impl CommentToken {
     pub fn as_line_token(&self) -> Option<&str> {
         match *self {
             CommentToken::Line(ref s) => Some(&**s),
-            _ => None
+            _ => None,
         }
     }
     pub fn as_block_tokens(&self) -> Option<(&str, &str)> {
         match *self {
             CommentToken::Block(ref s, ref t) => Some((&**s, &**t)),
-            _ => None
+            _ => None,
         }
     }
     pub fn is_line(&self) -> bool {
@@ -32,9 +33,8 @@ impl CommentToken {
     }
 }
 
-
 #[derive(Clone, Debug)]
-pub struct CodeStats {
+pub struct CodeStat {
     code: u64,
     blank: u64,
     comment: u64,
@@ -42,7 +42,7 @@ pub struct CodeStats {
     ext: String,
 }
 
-impl CodeStats {
+impl CodeStat {
     pub fn new(path: &str) -> Self {
         Self {
             code: 0u64,
@@ -55,17 +55,19 @@ impl CodeStats {
 }
 
 pub trait Parser {
-    fn parse(self) -> io::Result<CodeStats>;
+    fn parse(self) -> io::Result<CodeStat>;
     fn parse_line(&mut self, line: &str);
 }
 
-
-impl Display for CodeStats {
+impl Display for CodeStat {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        write!(f, "{{ Code: {}, Comment: {}, Blank: {} }}", self.code, self.comment, self.blank)
+        write!(
+            f,
+            "{{ Code: {}, Comment: {}, Blank: {} }}",
+            self.code, self.comment, self.blank
+        )
     }
 }
-
 
 enum ParserInternalState {
     Normal,
@@ -73,14 +75,16 @@ enum ParserInternalState {
 }
 
 pub enum ParserState {
-    // the internal string is path
-    Ready(String),
-    Complete(CodeStats),
-    Error(String, io::Error),
+    Ready,
+    Parsing,
+    Complete(CodeStat),
+    Error(io::Error),
 }
 
+impl ParserState {}
+
 struct ParserContext {
-    stats: CodeStats,
+    stat: CodeStat,
     comment_tokens: Vec<CommentToken>,
     state: ParserInternalState,
     block_token: Option<CommentToken>,
@@ -89,7 +93,7 @@ struct ParserContext {
 impl ParserContext {
     fn new(path: &str, comment_tokens: Vec<CommentToken>) -> Self {
         Self {
-            stats: CodeStats::new(path),
+            stat: CodeStat::new(path),
             comment_tokens,
             state: ParserInternalState::Normal,
             block_token: None,
@@ -98,33 +102,33 @@ impl ParserContext {
 }
 
 pub struct CommonParser {
-    context: ParserContext
+    context: ParserContext,
 }
 
 impl CommonParser {
     pub fn new(path: &str, comment_tokens: Vec<CommentToken>) -> Self {
         Self {
-            context: ParserContext::new(path, comment_tokens)
+            context: ParserContext::new(path, comment_tokens),
         }
     }
 
     fn parse_line_normal(&mut self, line: &str) {
-        let stats = &mut self.context.stats;
+        let stat = &mut self.context.stat;
         if line.is_empty() {
-            stats.blank += 1;
+            stat.blank += 1;
             return;
         }
         for token in self.context.comment_tokens.iter() {
             match token {
                 CommentToken::Line(t) => {
                     if line.starts_with(t.as_str()) {
-                        stats.comment += 1;
+                        stat.comment += 1;
                         return;
                     }
                 }
                 CommentToken::Block(s, _e) => {
                     if line.contains(s.as_str()) {
-                        stats.comment += 1;
+                        stat.comment += 1;
                         self.context.state = ParserInternalState::InBlockComment;
                         self.context.block_token = Some(token.clone());
                         return;
@@ -132,10 +136,10 @@ impl CommonParser {
                 }
             }
         }
-        stats.code += 1;
+        stat.code += 1;
     }
     fn parse_line_in_block_comment(&mut self, line: &str) {
-        let stats = &mut self.context.stats;
+        let stat = &mut self.context.stat;
         for token in self.context.comment_tokens.iter() {
             if let CommentToken::Block(_s, e) = token {
                 if line.contains(e.as_str()) {
@@ -146,23 +150,23 @@ impl CommonParser {
                 }
             }
         }
-        stats.comment += 1;
+        stat.comment += 1;
     }
 }
 
 impl Parser for CommonParser {
-    fn parse(mut self) -> io::Result<CodeStats> {
-        let file = File::open(self.context.stats.path.as_str())?;
+    fn parse(mut self) -> io::Result<CodeStat> {
+        let file = File::open(self.context.stat.path.as_str())?;
         let reader = BufReader::new(file);
         for line in reader.lines() {
             self.parse_line(line?.trim());
         }
-        Ok(self.context.stats)
+        Ok(self.context.stat)
     }
     fn parse_line(&mut self, line: &str) {
         match self.context.state {
             ParserInternalState::Normal => self.parse_line_normal(line),
-            ParserInternalState::InBlockComment => self.parse_line_in_block_comment(line)
+            ParserInternalState::InBlockComment => self.parse_line_in_block_comment(line),
         }
     }
 }
@@ -174,7 +178,10 @@ mod tests {
     #[test]
     fn parse() {
         let path = "tests/eng.cpp";
-        let comment_tokens = vec![CommentToken::Line("//".to_string()), CommentToken::Block("/*".to_string(), "*/".to_string())];
+        let comment_tokens = vec![
+            CommentToken::Line("//".to_string()),
+            CommentToken::Block("/*".to_string(), "*/".to_string()),
+        ];
         let parser = CommonParser::new(path, comment_tokens);
         let stats = parser.parse().unwrap();
         println!("{:#?}", stats);

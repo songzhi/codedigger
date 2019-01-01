@@ -1,12 +1,14 @@
 extern crate indicatif;
 extern crate toml;
 
-use std::collections::BTreeMap;
-use std::error::Error;
-use std::fs::File;
-use std::io::Read;
+use std::{
+    collections::BTreeMap,
+    error::Error,
+    fs::File,
+    io::Read,
+};
 
-use parser::CommentToken;
+use super::parser::CommentToken;
 
 use self::indicatif::{ProgressBar, ProgressStyle};
 
