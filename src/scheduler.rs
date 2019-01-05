@@ -6,6 +6,7 @@ use std::{
     collections::BTreeMap,
     fs,
     io,
+    path::{Path, PathBuf},
     sync::mpsc::{channel, Sender},
 };
 
@@ -18,8 +19,8 @@ use super::parser::{CodeStat, CommonParser, Parser, ParserState};
 use self::threadpool::ThreadPool;
 
 pub struct Scheduler {
-    pub init_path: String,
-    pub parsers: BTreeMap<String, ParserState>,
+    pub init_path: PathBuf,
+    pub parsers: BTreeMap<PathBuf, ParserState>,
     task_left: u64,
     threadpool: ThreadPool,
     config: config::Config,
@@ -28,9 +29,9 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
-    pub fn new(path: &str, threadpool: ThreadPool, config: config::Config, cache_manager: cache::CacheManager) -> Self {
+    pub fn new(path: &Path, threadpool: ThreadPool, config: config::Config, cache_manager: cache::CacheManager) -> Self {
         Self {
-            init_path: path.to_string(),
+            init_path: path.to_path_buf(),
             parsers: BTreeMap::new(),
             task_left: 0,
             multi_bars: MultiProgress::new(),
@@ -39,9 +40,9 @@ impl Scheduler {
             cache_manager,
         }
     }
-    pub fn start(mut self) -> Result<BTreeMap<String, ParserState>, io::Error> {
+    pub fn start(mut self) -> Result<BTreeMap<PathBuf, ParserState>, io::Error> {
         let (tx, rx) = channel();
-        self.schedule(self.init_path.as_str(), tx.clone())?;
+        self.schedule(self.init_path.as_path(), tx.clone())?;
         while let Ok((path, state)) = rx.recv() {
             match state {
                 ParserState::Ready => self.task_left += 1,
@@ -57,21 +58,20 @@ impl Scheduler {
         Ok(self.parsers)
     }
     /// 递归调用方法
-    fn schedule(&self, path: &str, tx: Sender<(String, ParserState)>) -> Result<(), io::Error> {
-        let path = path.trim();
+    fn schedule(&self, path: &Path, tx: Sender<(PathBuf, ParserState)>) -> Result<(), io::Error> {
         let entries = fs::read_dir(path)?;
         for entry in entries {
             let entry = entry?;
             let file_type = entry.file_type()?;
-            let path = entry.path().to_str().unwrap().to_string();
+            let path = entry.path();
             if file_type.is_dir() {
-                self.schedule(&path, tx.clone())?;
+                self.schedule(path.as_path(), tx.clone())?;
             } else if file_type.is_file() {
                 let tx = tx.clone();
                 tx.send((path.clone(), ParserState::Ready));
-                if let Some(stats) = self.cache_manager.get_cache(&path) {
+                if let Some(stats) = self.cache_manager.get_cache(path.as_path()) {
                     tx.send((path, ParserState::Complete(stats)));
-                } else if let Some(tokens) = self.config.get_comment_tokens(&path) {
+                } else if let Some(tokens) = self.config.get_comment_tokens(path.extension().unwrap().to_str().unwrap()) {
                     let path = path.clone();
                     let file_size = entry.metadata().unwrap().len();
                     let bar = self.multi_bars.add(ProgressBar::new(file_size));
@@ -81,7 +81,7 @@ impl Scheduler {
                     self.threadpool.execute(move || {
                         bar.set_message(&format!("Parsing:{}", file_name));
                         tx.send((path.clone(), ParserState::Parsing)).expect("发送失败");
-                        let result = CommonParser::new(path.as_str(), tokens, bar).parse();
+                        let result = CommonParser::new(path.as_path(), tokens, bar).parse();
                         match result {
                             Ok(stats) => tx.send((path, ParserState::Complete(stats))).expect("发送失败"),
                             Err(err) => tx.send((path, ParserState::Error(err))).expect("发送失败")

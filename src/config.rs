@@ -5,6 +5,7 @@ use std::{
     collections::BTreeMap,
     fs::File,
     io::Read,
+    path::{Path, PathBuf}
 };
 
 use super::parser::CommentToken;
@@ -22,17 +23,16 @@ impl Config {
         let progress_style = ProgressStyle::default_bar()
             .template("{bar:40.cyan/blue} {pos:>7}/{len:7} {msg}")
             .progress_chars("##-");
-        let token_map_file = String::new();
+        let token_map_file = PathBuf::new();
         Self {
             progress_style,
-            token_map: Self::get_token_map(&token_map_file).expect("注释Token配置文件不存在"),
+            token_map: Self::get_token_map(token_map_file.as_path()).expect("注释Token配置文件不存在"),
         }
     }
-    pub fn get_comment_tokens(&self, path: &str) -> Option<Vec<CommentToken>> {
-        let ext = path.rsplit(".").next()?;
+    pub fn get_comment_tokens(&self, ext: &str) -> Option<Vec<CommentToken>> {
         self.token_map.get(ext).map(|vec| vec.to_vec())
     }
-    pub fn get_token_map(path: &str) -> Option<BTreeMap<String, Vec<CommentToken>>> {
+    pub fn get_token_map(path: &Path) -> Option<BTreeMap<String, Vec<CommentToken>>> {
         let mut file = File::open(path).ok()?;
         let mut buf = String::with_capacity(file.metadata().ok()?.len() as usize);
         file.read_to_string(&mut buf).ok()?;
@@ -57,7 +57,7 @@ impl Config {
         }
         Some(result_map)
     }
-    pub fn set_comment_token(&mut self, path: &str) {
+    pub fn set_comment_token(&mut self, path: &Path) {
         if let Some(mut map) = Self::get_token_map(path) {
             self.token_map.append(&mut map);
         };
@@ -70,7 +70,7 @@ mod tests {
 
     #[test]
     fn test_get_token_map() {
-        let map = Config::get_token_map("src/token_map.toml").unwrap();
+        let map = Config::get_token_map(Path::new("src/token_map.toml")).unwrap();
         assert_eq!(map.get("py").unwrap().len(), 3);
         println!("{:#?}", map);
     }

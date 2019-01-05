@@ -1,15 +1,16 @@
 use std::{
     collections::BTreeMap,
+    path::{Path, PathBuf}
 };
 
 use super::parser::CodeStat;
 
 pub struct CacheManager {
-    cache: BTreeMap<String, CodeStat>
+    cache: BTreeMap<PathBuf, CodeStat>
 }
 
 impl CacheManager {
-    pub fn get_cache(&self, path: &str) -> Option<CodeStat> {
+    pub fn get_cache(&self, path: &Path) -> Option<CodeStat> {
         unimplemented!()
     }
     pub fn set_cache(&mut self, code_stat: CodeStat) {

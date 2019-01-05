@@ -4,6 +4,8 @@ use std::{
     io,
     io::BufReader,
     io::prelude::*,
+    path::{Path, PathBuf},
+    str::FromStr,
 };
 
 use indicatif::{ProgressBar, ProgressStyle};
@@ -40,18 +42,16 @@ pub struct CodeStat {
     pub code: u64,
     pub blank: u64,
     pub comment: u64,
-    pub path: String,
-    pub ext: String,
+    pub path: PathBuf
 }
 
 impl CodeStat {
-    pub fn new(path: &str) -> Self {
+    pub fn new(path: PathBuf) -> Self {
         Self {
             code: 0u64,
             blank: 0u64,
             comment: 0u64,
-            path: path.to_string(),
-            ext: String::from(path.rsplit(".").nth(0).unwrap()),
+            path,
         }
     }
 }
@@ -93,9 +93,9 @@ struct ParserContext {
 }
 
 impl ParserContext {
-    fn new(path: &str, comment_tokens: Vec<CommentToken>) -> Self {
+    fn new(path: &Path, comment_tokens: Vec<CommentToken>) -> Self {
         Self {
-            stat: CodeStat::new(path),
+            stat: CodeStat::new(path.to_path_buf()),
             comment_tokens,
             state: ParserInternalState::Normal,
             block_token: None,
@@ -109,7 +109,7 @@ pub struct CommonParser {
 }
 
 impl CommonParser {
-    pub fn new(path: &str, comment_tokens: Vec<CommentToken>, bar: ProgressBar) -> Self {
+    pub fn new(path: &Path, comment_tokens: Vec<CommentToken>, bar: ProgressBar) -> Self {
         Self {
             context: ParserContext::new(path, comment_tokens),
             bar,
@@ -160,7 +160,7 @@ impl CommonParser {
 
 impl Parser for CommonParser {
     fn parse(mut self) -> io::Result<CodeStat> {
-        let file = File::open(self.context.stat.path.as_str())?;
+        let file = File::open(self.context.stat.path.as_path())?;
         let reader = BufReader::new(file);
         for line in reader.lines() {
             let line = line?;
@@ -187,14 +187,14 @@ mod tests {
     #[test]
     fn parse() {
         let begin = Instant::now();
-        let path = "tests/window2.html";
+        let path = PathBuf::from_str("tests/window2.html").unwrap();
         let comment_tokens = vec![
             CommentToken::Line("//".to_string()),
             CommentToken::Block("/*".to_string(), "*/".to_string()),
             CommentToken::Block("<!--".to_string(), "-->".to_string()),
         ];
         let bar = ProgressBar::new(12);
-        let parser = CommonParser::new(path, comment_tokens, bar);
+        let parser = CommonParser::new(path.as_path(), comment_tokens, bar);
         let stats = parser.parse().unwrap();
         let end = Instant::now();
         let used_time = end.duration_since(begin);
