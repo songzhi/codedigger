@@ -2,6 +2,9 @@ extern crate num_cpus;
 /// 调用parser解析根目录文件树的所有文件
 extern crate threadpool;
 
+// TODO: 注释
+// TODO: 使用failure crate统一Error
+// TODO: benchmark
 use std::{
     collections::BTreeMap,
     fs,
@@ -43,6 +46,7 @@ impl Scheduler {
     pub fn start(mut self) -> Result<BTreeMap<PathBuf, ParserState>, io::Error> {
         let (tx, rx) = channel();
         self.schedule(self.init_path.as_path(), tx.clone())?;
+        drop(tx);
         while let Ok((path, state)) = rx.recv() {
             match state {
                 ParserState::Ready => self.task_left += 1,
@@ -50,9 +54,6 @@ impl Scheduler {
                 _ => {}
             }
             self.parsers.insert(path, state);
-            if self.task_left == 0 {
-                break;
-            }
         };
         self.multi_bars.join();
         Ok(self.parsers)

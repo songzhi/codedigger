@@ -161,9 +161,10 @@ impl CommonParser {
 impl Parser for CommonParser {
     fn parse(mut self) -> io::Result<CodeStat> {
         let file = File::open(self.context.stat.path.as_path())?;
-        let reader = BufReader::new(file);
-        for line in reader.lines() {
-            let line = line?;
+        let mut reader = BufReader::new(file);
+        let mut buf = String::new();
+        reader.read_to_string(&mut buf);
+        for line in buf.lines() {
             self.parse_line(line.trim());
             self.bar.inc(line.len() as u64);
         }
